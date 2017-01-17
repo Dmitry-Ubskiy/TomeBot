@@ -3,9 +3,11 @@ import discord
 import json
 import random
 import operator
+import re
 
 #operator look up table for the diceroller
-ops = {"+":operator.add,"-":operator.sub}
+operators = {"+": operator.add, "-": operator.sub,
+             "*": operator.mul, "/": operator.truediv}
 
 #edit these values if you want to load the various json files from different folders.
 paths = {"license":"license.json","spells":"spells.json","monsters":"monsters.json","token":"token.json","log":"log.json"}
@@ -90,48 +92,117 @@ https://discordapp.com/oauth2/authorize?client_id=247413966094073856&scope=bot&p
 """
         return([response])
 
+    def tokenize_roll(self, expression):
+        lexem_regex = r'\d+d\d+|\d*\.\d+|\d+|[-+*/()]'
+        lexems = re.findall(lexem_regex, expression)
+
+        # check that we don't have any extra junk
+        print(''.join(re.split(lexem_regex, expression)).strip())
+        if ''.join(re.split(lexem_regex, expression)).strip() != '':
+            raise Exception("")
+
+        tokens = []
+
+        dice_regex = re.compile(r'\d+d\d+')
+        int_regex = re.compile(r'\d+')
+        float_regex = re.compile(r'\d*\.\d+')
+
+        for lex in lexems:
+            if lex in ("(", ")", "-", "+", "*", "/"):
+                tokens.append([lex])
+            elif dice_regex.match(lex):
+                num, sides = lex.split('d')
+                tokens.append(["DICE", int(num), int(sides)])
+            elif int_regex.match(lex):
+                tokens.append(["NUM", int(lex)])
+            elif float_regex.match(lex):
+                tokens.append(["NUM", float(lex)])
+
+        return tokens
+
+    def evaluate_roll(self, tokens):
+        # evaluate dice first:
+        result_str = ["Rolling: "]
+        for i, t in enumerate(tokens):
+            if t[0] == "DICE":
+                rolls = []
+                roll_total = 0
+                for n in range(t[1]):
+                    roll = random.randint(1, t[2])
+                    rolls.append(str(roll))
+                    roll_total += roll
+                result_str.append("(" + "+".join(rolls) + ")")
+                tokens[i] = ["NUM", roll_total]
+            elif t[0] == "NUM":
+                result_str.append(str(t[1]))
+            else:
+                result_str.append(t[0])
+
+        results = []
+        total = []
+
+        # reorder as per RPN
+        queue = []
+        stack = []
+
+        muldiv = ("*", "/")
+        addsub = ("+", "-")
+        ops = muldiv + addsub
+
+        for t in tokens:
+            if t[0] == "NUM":
+                queue.append(t[1])
+            elif t[0] in muldiv:
+                if stack and stack[-1] in muldiv:
+                    queue.append(stack[-1])
+                    stack = stack[:-1]
+                stack.append(t[0])
+            elif t[0] in addsub:
+                while stack and stack[-1] in ops:
+                    queue.append(stack[-1])
+                    stack = stack[:-1]
+                stack.append(t[0])
+            elif t[0] == "(":
+                stack.append(t[0])
+            elif t[0] == ")":
+                if stack:
+                    while stack[-1] != "(":
+                        queue.append(stack[-1])
+                        stack = stack[:-1]
+                stack = stack[:-1]
+
+        queue += reversed(stack)
+
+        # evaluate
+        stack = []
+
+        for t in queue:
+            if type(t) in (int, float):
+                stack.append(t)
+            else:
+                stack[-2] = operators[t](stack[-2], stack[-1])
+                stack = stack[:-1]
+
+        if len(stack) != 1:
+            raise Exception
+
+        if type(stack[0]) == float and stack[0].is_integer():
+            stack[0] = int(stack[0])
+
+        result_str += [" = ", str(stack[0])]
+
+        return "".join(result_str)
 
     def roll(self, message):
         try:
-            words = message.content.split(" ")
-            dicenumbers = words[1].split("d")
-            try:
-                modifierint = words[2][1:]
-                modifiersign = words[2][:1]
-            except:
-                modifierint = ""
-                modifiersign = ""
-            total = 0
-            rolls = "Rolls are: "
-            if len(dicenumbers[0]) < 4:
-                for x in (range(0,int(dicenumbers[0]))):
-                    if "+" in dicenumbers[1]:
-                        values = dicenumbers[1].split("+")
-                        roll = random.randint(1,int(values[0]))
-                        rolls += str(roll)+"+"+values[1]
-                        roll = roll + int(values[1])
-                        rolls += "="+str(roll)+", "
-                    elif "-" in dicenumbers[1]:
-                        values = dicenumbers[1].split("-")
-                        roll = random.randint(1,int(values[0]))
-                        rolls += str(roll)+"-"+values[1]
-                        roll = roll - int(values[1])
-                        rolls += "="+str(roll)+", "
-                    else:
-                        roll = random.randint(1,int(dicenumbers[1]))
-                        rolls += str(roll)+", "
-                    total += roll
-                if modifiersign == "":
-                    rolls = rolls[:-2]+". Total = "+str(total)
-                else:
-                    rolls = rolls[:-2]+". "+modifiersign+" "+modifierint+". Total = "+str(ops[modifiersign](total,int(modifierint)))
-                if len(rolls)>1900:
-                    rolls = "Don't do stupid stuff with the Roll command."
-            else:
-                rolls = "Don't do stupid stuff with the Roll command."
+            if not message.content.startswith("?roll "):
+                raise Exception
+            expression = message.content[6:]
+            tokens = self.tokenize_roll(expression)
+            rolls = self.evaluate_roll(tokens)
         except:
             rolls = "Don't do stupid stuff with the Roll command."
-        return([rolls])
+        return ([rolls])
 
     def spellinfo(self, message):
         searchterm = message.content.split(' ',1)[1].lower()
