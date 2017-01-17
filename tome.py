@@ -98,7 +98,7 @@ https://discordapp.com/oauth2/authorize?client_id=247413966094073856&scope=bot&p
 
         # check that we don't have any extra junk
         if ''.join(re.split(lexem_regex, expression)).strip() != '':
-            raise
+            raise Exception
 
         tokens = []
 
@@ -137,9 +137,6 @@ https://discordapp.com/oauth2/authorize?client_id=247413966094073856&scope=bot&p
                 result_str.append(str(t[1]))
             else:
                 result_str.append(t[0])
-
-        results = []
-        total = []
 
         # reorder as per RPN
         queue = []
