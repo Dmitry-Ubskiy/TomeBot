@@ -93,17 +93,16 @@ https://discordapp.com/oauth2/authorize?client_id=247413966094073856&scope=bot&p
         return([response])
 
     def tokenize_roll(self, expression):
-        lexem_regex = r'\d+d\d+|\d*\.\d+|\d+|[-+*/()]'
+        lexem_regex = r'\d*d\d+|\d*\.\d+|\d+|[-+*/()]'
         lexems = re.findall(lexem_regex, expression)
 
         # check that we don't have any extra junk
-        print(''.join(re.split(lexem_regex, expression)).strip())
         if ''.join(re.split(lexem_regex, expression)).strip() != '':
-            raise Exception("")
+            raise
 
         tokens = []
 
-        dice_regex = re.compile(r'\d+d\d+')
+        dice_regex = re.compile(r'\d*d\d+')
         int_regex = re.compile(r'\d+')
         float_regex = re.compile(r'\d*\.\d+')
 
@@ -112,6 +111,7 @@ https://discordapp.com/oauth2/authorize?client_id=247413966094073856&scope=bot&p
                 tokens.append([lex])
             elif dice_regex.match(lex):
                 num, sides = lex.split('d')
+                num = "1" if num == "" else num
                 tokens.append(["DICE", int(num), int(sides)])
             elif int_regex.match(lex):
                 tokens.append(["NUM", int(lex)])
